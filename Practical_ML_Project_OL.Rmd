@@ -1,0 +1,146 @@
+---
+title: "Practical Machine Learning Coursera Assignment"
+author: "Ody Liagkas"
+date: "2024/06/27"
+geometry: margin=0.5cm
+output: html_document
+---
+## Introduction
+One thing that people regularly do is quantify how  much of a particular activity they do, but they rarely quantify how well they do it. 
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the train_set set. 
+
+### Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har
+
+### The Github repository for this report is the following:
+https://github.com/OdyLiagkas/Practical-Machine-Learning-Coursera-Assignment/tree/main
+
+## Dependencies
+First and foremost we have to load the packages and set the seed for rebroducibility's sake.
+```{r include=TRUE}
+library(caret)
+library(corrplot)
+library(randomForest)
+library(rattle)
+library(rpart.plot)
+set.seed(11)
+```  
+
+
+## Data
+Second of all I set my current working directory becasue I have already downloaded the data files.  
+```{r  include=FALSE}
+setwd("C:/Users/odlia/Desktop")
+```  
+
+If I didn't have the files downloaded already I could download them using their link and download.file().  
+```
+url_train_set <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url_test_set <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+train_set <- "./pml-training.csv"
+test_set <- "./pml-testing.csv"
+
+download.file(url_train_set, destfile = train_set, method = "curl")
+download.file(url_test_set, destfile = test_set, method = "curl")
+```  
+
+## Parsing Data  
+The next step is to pass each set to a corresponding variable: train_df and test_df  
+```{r include=TRUE}
+train_set <- "./pml-training.csv"
+test_set <- "./pml-testing.csv"
+train_df <- read.csv(train_set)
+test_df <- read.csv(test_set)
+```
+```{r echo=FALSE}
+dim(train_df)
+dim(test_df)
+```  
+The training set data frame has `r dim(train_df)[1]` observations and `r dim(train_df)[2]` variables, 
+while the testing set data frame has `r dim(test_df)[1]` observations and `r dim(test_df)[2]` variables. 
+
+
+The `classe` variable of the train_set set is what we want to predict in the test set.  
+
+
+## Cleaning Data  
+In this step I clean BOTH data frames according to the results of nearZeroVar() after ommiting columns with NAs
+```{r include=TRUE}
+train_df <- train_df[, colSums(is.na(test_df)) == 0]
+test_df <- test_df[, colSums(is.na(test_df)) == 0] 
+near_zero_variables <- nearZeroVar(train_df, saveMetrics = TRUE) 
+
+train_nzv <- train_df[, !near_zero_variables$nzv]
+test_nzv <- test_df[, !near_zero_variables$nzv]
+```
+```{r echo=FALSE}
+dim(train_nzv)
+dim(test_nzv)
+```  
+
+Additionally I remove the first 5 columns of the sets that only exist for identification and give no essential information
+```{r include=TRUE}
+train_set <- train_nzv[, -(1:5)]
+test_set <- test_nzv[, -(1:5)]
+```
+```{r echo=FALSE}
+dim(train_set)
+dim(test_set)
+```  
+
+
+After all this cleaning,
+the training set has `r dim(train_set)[1]` observations and `r dim(train_set)[2]` variables, 
+while the testing set contains `r dim(test_set)[1]` observations and `r dim(test_set)[2]` variables.  
+
+
+## Partitioning the Training Set  
+In this step I create two subsets out of the original Training Set.
+70% is allocated for the training and 30% is allocated for the Testing of the Training Set.
+
+```{r include=TRUE}
+set.seed(11) 
+train_set$classe <- factor(train_set$classe)
+train_train <- createDataPartition(train_set$classe, p = 0.70, list = FALSE)
+test_train <- train_set[-train_train, ]
+train_set <- train_set[train_train, ]
+
+```  
+The Original Training Set now consists of `r dim(train_set)[2]` variables with the observations split in the following manner:  
+The Training Set (70% of original) with `r dim(train_set)[1]` observations.  
+Testing Training Set (30% of original) with `r dim(test_train)[1]` observations.  
+
+The Test Set remains with `r dim(test_set)[1]` observations.  
+
+
+## Modeling Data  
+
+The Random Forest algorithm was performed for the activity recognition prediction because it's 'immune' to underlying correlations as well as outliers. 
+
+Additionally, the model is going to be controled with 5 fold cross validation.
+```{r echo=TRUE, cache=TRUE}
+RF_model <- train(classe ~ ., data = train_set, method = "rf", trControl = trainControl(method = "cv", 5), ntree = 250)
+RF_model
+```  
+
+The next step is to check the performance of the model on the test_train set
+```{r warning=FALSE, error=FALSE, echo=TRUE, cache=TRUE}
+RF_prediction <- predict(RF_model, test_train)
+accuracy <- postResample(RF_prediction, test_train$classe)
+confusionMatrix(test_train$classe, RF_prediction)
+ose <- 1 - as.numeric(confusionMatrix(test_train$classe, RF_prediction)$overall[1])
+
+```  
+
+The Accuracy of the Random Forest Model is `r accuracy[1]*100`% and the Estimated Out-of-Sample Error is `r ose*100`%.
+
+
+## Predicting Data
+Finally the Random Forest Model is applied to the original Test Set.
+```{r warning=FALSE, error=FALSE, echo=TRUE}
+predict(RF_model, test_set[, -length(names(test_set))])
+```  
+
